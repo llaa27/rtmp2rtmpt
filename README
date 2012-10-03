@@ -1,0 +1,98 @@
+================================
+rtmp2rtmpt - RTMP to RTMPT proxy
+================================
+
+This program is a proxy server which receives RTMP (Real Time Media Protocol) data on a local port and forwards it to a remote server via RTMPT (Real Time Media Protocol Tunnelling).  It can be used as a transparent proxy (by using a REDIRECT rule in netfilter) or it can alternatively forward data to a single server.  RTMPT encapsulates RTMP data in HTTP and therefore allows RTMP connections to traverse HTTP-only proxies.
+
+There are a couple of use cases for this program:
+
+1.  The implementation of RTMPT in the Linux version of Adobe's Flash Player 10.1 contains a bug which renders it unusable (https://bugs.adobe.com/jira/browse/FP-4797).   The net effect of this bug is that the HTTP headers sent by the Flash Player will grow indefinitely in each subsequent request.  Eventually the headers will become so large that they will be rejected by either the remote server or an intermediary proxy, resulting in a premature termination of video playback.
+2.  Some flash applications are hard-coded so that they only attempt to establish an RTMP connection and do not fall back to RTMPT if the connection attempt fails.
+
+In both cases, users which can only access the remote server via a HTTP proxy (and are behind a firewall which blocks outgoing connections on port 1935) are left with no way access RTMP streams.  This is where rtmp2rtmpt is useful.
+
+
+------------
+REQUIREMENTS
+------------
+
+* Perl
+* Net::Proxy (libnet-proxy-perl under Debian)
+* HTTP::Parser (libhttp-parser-perl under Debian)
+
+
+-----
+USAGE
+-----
+
+There are a variety of ways to use rtmp2rtmpt.  Listed here are some common scenarios.
+
+
+*Transparent proxy*
+
+RTMP data sent by the client on port 1935 will be converted to RTMPT and sent to the destination server.
+
++--------+         +----------+         +------------+         +--------+
+|        |     port|          |     port|            |     port|        |
+| Client |<------->| iptables |<------->| rtmp2rtmpt |<------->| Server |
+|        |     1935|          |     8080|            |       80|        |
++--------+         +----------+         +------------+         +--------+
+
+First it is necessary to configure iptables such that it redirects all outgoing traffic destined for port 1935 to a local port, e.g.:
+
+$IPTABLES -t nat -A OUTPUT  -p tcp -m tcp   --dport 1935 -j DNAT --to-destination 192.168.1.1:8080 
+
+You may also wish to similarly redirect traffic from your internal network, e.g.:
+
+$IPTABLES -t nat -A PREROUTING  -p tcp -m tcp  -s 192.168.1.0/24   --dport 1935 -j DNAT --to-destination 192.168.1.8:8080 
+
+To convert incoming RTMP data to RTMPT and send it to port 80 of the original host:
+
+$ rtmp2rtmpt -p 80
+
+
+*External proxy*
+
+This example uses the same transparent proxy configuration from above but tunnels the RTMPT data via an external HTTP proxy.
+
++--------+      +----------+      +------------+      +-------+      +--------+
+|        |  port|          |  port|            |  port| HTTP  |  port|        |
+| Client |<---->| iptables |<---->| rtmp2rtmpt |<---->| Proxy |<---->| Server |
+|        |  1935|          |  8080|            |    80|       |    80|        |
++--------+      +----------+      +------------+      +-------+      +--------+
+
+If the host name of the HTTP proxy is proxy.com then this can be accomplished with:
+
+$ rtmp2rtmpt -p 80 -x -g proxy.com
+
+If the connection to the proxy is very slow then you may need to experiment with some of the options listed in the POLLING INTERVALS section below.
+
+
+*Reverse proxy*
+
+You may wish to handle RTMPT connections from the outside world and foward them to an internal server in your DMZ.
+
++--------+         *----------*         +------------+         +--------+
+|        |         {          )     port|            |     port| Server |
+| Client |<------->{ internet )<------->| rtmp2rtmpt |<------->| in DMZ |
+|        |         {          )     1935|            |       80|        |
++--------+         *----------*         +------------+         +--------+
+
+To forward incoming connections from the internet to an internal server located at 192.168.1.1 on port 80:
+
+$ rtmp2rtmpt -l 1935 -t 192.168.1.1 -p 80
+
+
+-----------------
+POLLING INTERVALS
+-----------------
+
+The RTMPT protocol implements a keep-alive mechanism to prevent the connection between the client and server from being closed if it becomes idle.   It works by having the client send a special "idle" request to the server if no data is transmitted within a particular "polling interval".  
+
+The default behaviour of rtmp2rtmpt is to use the polling interval specified by the server.  In certain cases (i.e. when there is high latency between the server and client) you may wish to override this using one of the following options:
+
+--interval: Used the specified polling interval instead of the value received from the server.  The "time slice" used for polling is approximately 15ms, so a value of 33 corresponds to a delay of approximately 0.5s before the idle message is sent.
+--no-idle: Do not send idle requests at all.
+--max-requests: Do not send idle requests to the server if waiting for more than the specified number of responess.
+
+Note that overriding the polling interval (especially --no-idle) can be dangerous because the server may choose to not respond directly to a "send" request but instead send the required data in response to an expected upcoming "idle" request.

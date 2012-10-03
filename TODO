@@ -1,0 +1,6 @@
+* Add ability to use specific hostnames when talking to HTTP proxy, this may help when streaming from Akamai servers as it will find the closest host instead of the IP which was resolved locally
+* Add ability to add X-Forwarded-For to header
+* Implement retry support in case remote server closes connection unexpectedly
+* Support more than one value for --target-host to allow incoming connections to be cycled between multiple HTTP proxies
+* Add support for decoming RTMP data using Data::AMF
+* Remove local copies of Net::Proxy modules if fixes are committed upstream

@@ -1,0 +1,20 @@
+0.01 - 18/8/2010
+* First working version
+
+0.02 - 20/8/2010
+* Added support for IDLE command
+
+0.03 - 23/8/2010
+* Use HTTP::Parser to handle multiple responses in single recv()
+* Fix session termination by not sending IDLE commands when peer closes
+connection
+
+0.04 - 24/8/2010
+* Added HTTP proxy support
+
+0.05 - 26/8/2010
+* Support --interval values of more than 1 second
+* Added command line arguments to override polling interval
+
+0.06 - 27/8/2010
+* Handle failure to establish outgoing connection
